@@ -1,0 +1,9 @@
+{
+  "name": "OrbiTrip Georgia",
+  "description": "Exclusive tour platform for international tourists in Georgia, connecting travelers with local drivers.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

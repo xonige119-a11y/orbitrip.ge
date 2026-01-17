@@ -1,0 +1,218 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','GTM-P8X6VKJ4');</script>
+    <!-- End Google Tag Manager -->
+
+    <!-- Google Analytics (GA4) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-5SKF7WF7YJ"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-5SKF7WF7YJ');
+    </script>
+    <!-- End Google Analytics -->
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#f0f4f8" />
+    <meta name="description" content="Book private transfers and tours in Georgia directly from local drivers. Safety, comfort, and best prices guaranteed." />
+    
+    <!-- Base Title (Will be overridden by React) -->
+    <title>Orbitrip - Georgia</title>
+    
+    <!-- Favicon: Orbitrip Brand Logo (Indigo Sphere with Emerald Location Pin and White Stroke) -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%234338ca' stroke='%23ffffff' stroke-width='4'/%3E%3Cpath d='M50 20c-11 0-20 9-20 20 0 15 20 40 20 40s20-25 20-40c0-11-9-20-20-20zm0 28c-4.4 0-8-3.6-8-8s3.6-8 8-8 8 3.6 8 8-3.6 8-8 8z' fill='%2310b981' stroke='%23ffffff' stroke-width='2'/%3E%3C/svg%3E">
+
+    <meta name="robots" content="index, follow" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/react-datepicker/4.21.0/react-datepicker.min.css" />
+    <style>
+      body { 
+        font-family: 'Inter', sans-serif; 
+        -webkit-tap-highlight-color: transparent; 
+        background-color: transparent; 
+        margin: 0;
+        min-height: 100vh;
+      }
+
+      /* 
+         SMART BACKGROUND SYSTEM - "PARALLAX REVEAL"
+         - background-size: cover (Keeps aspect ratio, fills width)
+         - background-position: center top (Starts showing from the top of the image)
+         - transition: smooths out the scrolling effect slightly
+         - The JS below will update background-position-y based on scroll percentage.
+      */
+      #global-bg {
+        position: fixed;
+        inset: 0; 
+        z-index: -1;
+        overflow: hidden;
+        pointer-events: none;
+        background-color: #f0f4f8;
+      }
+
+      #global-bg-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background-image: url('https://fhfkdadxvpmmioikkwex.supabase.co/storage/v1/object/public/public-gallery/image.png');
+        background-size: cover;
+        background-position: center top; 
+        background-repeat: no-repeat;
+        will-change: background-position; /* Optimization for smooth scrolling */
+        transition: background-position 0.1s linear; /* Slight smoothing */
+      }
+
+      #global-bg-overlay {
+        position: absolute;
+        inset: 0;
+        background: transparent;
+      }
+      
+      .react-datepicker-wrapper { width: 100%; }
+      .react-datepicker__header { background-color: #f0fdf4; border-bottom: 1px solid #d1fae5; }
+      .react-datepicker__current-month { color: #047857; }
+      .react-datepicker__day--selected { background-color: #10b981 !important; border-radius: 50%; }
+      .react-datepicker__day--keyboard-selected { background-color: #34d399 !important; border-radius: 50%; }
+      .react-datepicker__day:hover { background-color: #ecfdf5; border-radius: 50%; }
+      .react-datepicker { border-color: #d1fae5; font-family: 'Inter', sans-serif; border-radius: 0.75rem; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border: none; }
+      .react-datepicker__triangle { display: none; }
+      .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      /* Error Trap Style */
+      #error-trap { display: none; padding: 20px; font-family: monospace; background: #fff0f0; color: #c00; border: 1px solid #ecc; margin: 20px; border-radius: 8px; z-index: 99999; position: relative; }
+    </style>
+    
+    <!-- CRITICAL FIX: Robust Environment Shim -->
+    <script>
+      // Ensure global object exists
+      var global = global || window;
+      
+      // Polyfill process.env
+      window.process = window.process || {};
+      window.process.env = window.process.env || {};
+      window.process.env.NODE_ENV = 'production';
+      
+      // Define specific keys with fallbacks to empty strings to prevent 'undefined' access errors
+      const envKeys = ['API_KEY', 'VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_ADMIN_PASSWORD', 'VITE_GEMINI_API_KEY', 'VITE_EMAILJS_SERVICE_ID', 'VITE_EMAILJS_TEMPLATE_ID', 'VITE_EMAILJS_PUBLIC_KEY'];
+      envKeys.forEach(function(key) {
+        if (!window.process.env[key]) {
+          window.process.env[key] = ''; 
+        }
+      });
+    </script>
+
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "react": "https://esm.sh/react@18.3.1",
+    "react/": "https://esm.sh/react@18.3.1/",
+    "react-dom": "https://esm.sh/react-dom@18.3.1",
+    "react-dom/": "https://esm.sh/react-dom@18.3.1/",
+    "react-datepicker": "https://esm.sh/react-datepicker@4.21.0?deps=react@18.3.1,react-dom@18.3.1",
+    "date-fns": "https://esm.sh/date-fns@2.30.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.3",
+    "react-datepicker/": "https://esm.sh/react-datepicker@^9.1.0/",
+    "@emailjs/browser": "https://esm.sh/@emailjs/browser@3.11.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-P8X6VKJ4"
+    height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    
+    <!-- FIXED BACKGROUND CONTAINER -->
+    <div id="global-bg">
+      <div id="global-bg-image"></div>
+      <div id="global-bg-overlay"></div>
+    </div>
+
+    <div id="root"></div>
+    <div id="error-trap"></div>
+
+    <!-- Error Trap Logic -->
+    <script>
+      window.addEventListener('error', function(event) {
+        var trap = document.getElementById('error-trap');
+        trap.style.display = 'block';
+        trap.innerText = 'App Crash: ' + event.message + '\nFile: ' + event.filename + ':' + event.lineno;
+        console.error('Trapped Error:', event);
+      });
+      
+      setTimeout(function() {
+        var root = document.getElementById('root');
+        if (root && root.innerHTML.trim() === '') {
+           console.warn('Root element is empty after timeout. Potential crash.');
+           var trap = document.getElementById('error-trap');
+           if (trap.style.display !== 'block') {
+               trap.style.display = 'block';
+               trap.innerHTML = '<strong>App failed to mount.</strong><br/>Please check console for errors.<br/>Possible cause: Missing environment variables or import failure.';
+           }
+        }
+      }, 5000);
+    </script>
+
+    <!-- SMART PARALLAX BACKGROUND LOGIC -->
+    <script>
+      (function() {
+        var bgImage = document.getElementById('global-bg-image');
+        var ticking = false;
+
+        function updateBackgroundPosition() {
+          if (!bgImage) return;
+          
+          var scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+          var docHeight = document.documentElement.scrollHeight;
+          var winHeight = window.innerHeight;
+          var maxScroll = docHeight - winHeight;
+          
+          // Avoid division by zero
+          if (maxScroll <= 0) return;
+
+          // Calculate percentage scrolled (0 to 1)
+          var scrollPercent = scrollTop / maxScroll;
+          
+          // Clamp between 0 and 1
+          if (scrollPercent < 0) scrollPercent = 0;
+          if (scrollPercent > 1) scrollPercent = 1;
+
+          // Map scroll percentage to background position Y (0% = top, 100% = bottom)
+          // This reveals the bottom of the image as you scroll down
+          bgImage.style.backgroundPosition = 'center ' + (scrollPercent * 100) + '%';
+          
+          ticking = false;
+        }
+
+        window.addEventListener('scroll', function() {
+          if (!ticking) {
+            window.requestAnimationFrame(updateBackgroundPosition);
+            ticking = true;
+          }
+        });
+
+        // Initialize on load
+        window.addEventListener('load', updateBackgroundPosition);
+        window.addEventListener('resize', updateBackgroundPosition);
+      })();
+    </script>
+
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
