@@ -1,0 +1,9 @@
+{
+  "name": "000",
+  "description": "",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
