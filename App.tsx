@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, Suspense, useRef } from 'react';
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -30,7 +29,6 @@ const LegalView = React.lazy(() => import('./components/LegalView'));
 const DEFAULT_STOPS = ['', ''];
 
 // --- SAFE HISTORY WRAPPERS ---
-// Prevents crashes in environments where History API is restricted
 const safeHistoryPush = (state: any, title: string, url: string) => {
     try { 
         if (typeof window !== 'undefined' && window.history && typeof window.history.pushState === 'function') {
@@ -45,16 +43,6 @@ const safeHistoryReplace = (state: any, title: string, url: string) => {
     try { 
         if (typeof window !== 'undefined' && window.history && typeof window.history.replaceState === 'function') {
             window.history.replaceState(state, title, url); 
-        }
-    } catch (e) {
-        console.warn("Navigation warning: History API restricted.", e);
-    }
-};
-
-const safeHistoryBack = () => {
-    try { 
-        if (typeof window !== 'undefined' && window.history && typeof window.history.back === 'function') {
-            window.history.back(); 
         }
     } catch (e) {
         console.warn("Navigation warning: History API restricted.", e);
@@ -93,7 +81,6 @@ const App = () => {
     const [selectedTour, setSelectedTour] = useState<Tour | null>(null);
     const [isTourDetailOpen, setIsTourDetailOpen] = useState(false);
     
-    // VISUAL LOADING STATE FOR AUTO-UPDATES
     const [isSearching, setIsSearching] = useState(false);
     
     const [selectedDriverProfile, setSelectedDriverProfile] = useState<{driver: Driver, price: number} | null>(null);
@@ -133,13 +120,11 @@ const App = () => {
         return () => window.removeEventListener('orbitrip-db-change', initData);
     }, []);
 
-    // --- BROWSER HISTORY MANAGEMENT ---
     useEffect(() => {
         const handlePopState = (event: PopStateEvent) => {
             if (event.state && event.state.view) {
                 setCurrentView(event.state.view);
             } else {
-                // Intelligent Fallback if history state is missing
                 if (currentView === 'BOOKING_PAGE') {
                     setCurrentView(searchParams ? 'SEARCH_RESULTS' : 'HOME');
                 } else if (currentView === 'DRIVER_PROFILE') {
@@ -167,16 +152,12 @@ const App = () => {
         if (tourOverride) setSelectedTour(tourOverride);
         setSearchGuests(guests);
         
-        // AUTO-UPDATE LOGIC WITH VISUAL FEEDBACK
         if (isAuto) {
             setIsSearching(true);
-            // Artificial delay to show the user that calculation is happening (Visual Feedback)
-            // This is crucial for UX so users perceive the price update
             await new Promise(resolve => setTimeout(resolve, 600)); 
-            setSearchParams(prev => ({ ...params })); // Force new object ref
+            setSearchParams(prev => ({ ...params })); 
             setIsSearching(false);
         } else {
-            // Manual search click - instant transition
             setSearchParams(params);
             setCurrentView('SEARCH_RESULTS');
             safeHistoryPush({ view: 'SEARCH_RESULTS' }, '', '?step=results');
@@ -187,7 +168,6 @@ const App = () => {
     const handleInitiateBooking = (driver: Driver, price: number, date: string) => {
         setSelectedDriverForBooking(driver);
         setBookingNumericPrice(price);
-        // Ensure date is carried over correctly from the selection
         setBookingFinalDate(date);
         
         setCurrentView('BOOKING_PAGE');
@@ -203,20 +183,37 @@ const App = () => {
                 status: 'PENDING',
                 createdAt: Date.now()
             };
+            
+            // ბაზაში შენახვა
             await db.bookings.create(newBooking);
             setBookings(prev => [newBooking, ...prev]);
             setLastBooking(newBooking);
             setIsSuccessModalOpen(true);
             
+            // SMS ადმინისტრატორს
             smsService.sendAdminNotification({
-                tourTitle: newBooking.tourTitle,
+                id: newBooking.id,
+                tourTitle: newBooking.tourTitle || 'Transfer',
                 date: newBooking.date,
-                price: newBooking.totalPrice,
+                price: `${newBooking.totalPrice} GEL`,
                 customerName: newBooking.customerName,
                 contact: newBooking.contactInfo,
                 driverName: newBooking.driverName || 'Any'
-            }).catch(() => {});
+            }).catch(err => console.warn("Admin SMS failed", err));
+
+            // SMS მძღოლს (თუ მძღოლი არჩეულია)
+            if (selectedDriverForBooking && selectedDriverForBooking.phone_number) {
+                smsService.sendDriverNotification(selectedDriverForBooking.phone_number, {
+                    id: newBooking.id,
+                    tourTitle: newBooking.tourTitle || 'Transfer',
+                    date: newBooking.date,
+                    price: `${newBooking.totalPrice} GEL`
+                }).catch(err => console.warn("Driver SMS failed", err));
+            }
+
+            // იმეილის გაგზავნა
             emailService.sendBookingConfirmation(newBooking, selectedTour, language).catch(() => {});
+            
         } catch (error) {
             alert(language === Language.EN ? "Network Error. Please try again." : "Ошибка сети. Пожалуйста, попробуйте снова.");
         }
@@ -234,25 +231,20 @@ const App = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    // FIX: EXPLICIT NAVIGATION (No ambiguous history.back calls)
     const handleBackFromBooking = () => {
         if (selectedDriverProfile) {
-            // If we came from a driver profile, go back there
             setCurrentView('DRIVER_PROFILE');
             safeHistoryReplace({ view: 'DRIVER_PROFILE' }, '', `?driver=${selectedDriverProfile.driver.id}`);
         } else {
-            // Otherwise go to results
             setCurrentView('SEARCH_RESULTS');
             safeHistoryReplace({ view: 'SEARCH_RESULTS' }, '', '?step=results');
         }
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    // FIX: EXPLICIT NAVIGATION
     const handleBackToResults = () => {
         setCurrentView('SEARCH_RESULTS');
         safeHistoryReplace({ view: 'SEARCH_RESULTS' }, '', '?step=results');
-        // Do not scroll to top, try to keep position if possible, or scroll to results container
         setTimeout(() => {
             if (resultsRef.current) {
                 resultsRef.current.scrollIntoView({ behavior: 'auto' });
@@ -408,8 +400,6 @@ const App = () => {
                                                 search={searchParams} 
                                                 language={language} 
                                                 onBook={(driver, price, guests, date) => {
-                                                    // This handler receives the date from VehicleResults state
-                                                    // ensuring that if the user changed the date there, it flows to booking
                                                     handleInitiateBooking(driver, parseFloat(price), date);
                                                 }} 
                                                 onProfileOpen={(driver, price) => {
@@ -420,7 +410,7 @@ const App = () => {
                                                 }}
                                                 onDirectBooking={handleBookingSubmit}
                                                 onSearchUpdate={handleSearch}
-                                                isLoading={isSearching} // Pass visual loading state
+                                                isLoading={isSearching} 
                                                 drivers={drivers} 
                                                 tour={selectedTour} 
                                                 onBack={handleReset} 
@@ -431,7 +421,6 @@ const App = () => {
                                             />
                                         </div>
                                     ) : (
-                                        // Fallback if search state is missing or corrupted
                                         <div className="mt-12 text-center pb-32 animate-fadeIn">
                                             <div className="bg-white/10 backdrop-blur-md p-8 rounded-2xl inline-block">
                                                 <p className="text-white font-bold text-lg mb-4">
@@ -497,7 +486,7 @@ const App = () => {
                                 <div className="pt-32 pb-0">
                                     <div className="max-w-4xl mx-auto px-4 mb-12 text-center text-white">
                                         <h1 className="text-4xl md:text-6xl font-black mb-4 drop-shadow-lg">
-                                            {isEn ? 'Georgia Private Transfers' : 'Трансферы по Грузии'}
+                                            {isEn ? 'Georgia Private Transfers' : 'Транსферы по Грузии'}
                                         </h1>
                                         <p className="text-lg opacity-90 drop-shadow-md">
                                             {isEn ? 'Direct deal with local experts' : 'Заказ напрямую у местных водителей'}
