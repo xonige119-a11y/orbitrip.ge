@@ -1,153 +1,142 @@
-
 import { db } from './db';
-import { SmsLog } from '../types';
 
-// SMS Service for OrbiTrip using smsoffice.ge API V2
-// Documentation: https://smsoffice.ge/api/v2/send/
-
-// IMPORTANT: This Sender Name must be registered and active in your smsoffice.ge account.
-// If 'localltrip' is not active, change this to 'smsoffice' (default sender).
+// SMS სერვისი OrbiTrip-ისთვის (smsoffice.ge API V2)
 const SENDER_NAME = 'localltrip'; 
-
-// The specific admin number requested
-const HARDCODED_ADMIN_PHONE = '995593456876'; 
+const FALLBACK_ADMIN_PHONE = '995593456876'; 
 
 export const smsService = {
     /**
-     * Cleans phone number to format compatible with API (International format without + or 00).
-     * Example: +995 593 12 34 56 -> 995593123456
+     * ასუფთავებს ნომერს ზედმეტი სიმბოლოებისგან და აკეთებს ფორმატირებას (995...)
      */
     cleanPhoneNumber: (phone: string): string => {
         if (!phone) return '';
-        
-        // Remove all non-digit characters
         let clean = phone.replace(/\D/g, ''); 
         
-        // Georgia Specific Logic
-        // If it starts with '5' and is 9 digits (e.g. 593123456), add '995' -> 995593123456
+        // თუ 9 ნიშნაა და იწყება 5-ით (მაგ: 593...)
         if (clean.length === 9 && clean.startsWith('5')) {
             return '995' + clean;
         }
-        
-        // If it starts with '05' (e.g. 0593...), remove '0' and add '995'
+        // თუ 10 ნიშნაა და იწყება 05-ით
         if (clean.length === 10 && clean.startsWith('05')) {
             return '995' + clean.substring(1);
         }
-
-        // If it's already 12 digits starting with 995, return as is
-        if (clean.length === 12 && clean.startsWith('995')) {
-            return clean;
-        }
-
-        // If it's just the country code + number but missing logic above (fallback)
         return clean;
     },
 
     /**
-     * Sends notification to the Driver (New Booking)
-     */
-    sendDriverNotification: async (driverPhone: string, bookingDetails: { id: string, tourTitle: string, date: string, price: string }): Promise<boolean> => {
-        if (!driverPhone) return false;
-        
-        const destination = smsService.cleanPhoneNumber(driverPhone);
-        const shortId = bookingDetails.id.slice(-6).toUpperCase();
-        
-        // Construct Message (Added ID)
-        const text = `OrbiTrip: Axali Shekveta #${shortId}!\nTuri: ${bookingDetails.tourTitle.substring(0, 20)}\nTarigi: ${bookingDetails.date}\nFasi: ${bookingDetails.price}\nSheamowmet kabineti.`;
-        
-        return smsService.sendSms(destination, text, 'DRIVER_NOTIFY');
-    },
-
-    /**
-     * Sends CANCELLATION notification to the Driver (When re-assigned or cancelled)
-     */
-    sendDriverCancellationNotification: async (driverPhone: string, bookingDetails: { id: string, date: string }): Promise<boolean> => {
-        if (!driverPhone) return false;
-        
-        const destination = smsService.cleanPhoneNumber(driverPhone);
-        const shortId = bookingDetails.id.slice(-6).toUpperCase();
-        
-        const text = `OrbiTrip: Javshani #${shortId} (${bookingDetails.date}) gaukmeda an gadaeca sxva mzgols.`;
-        
-        return smsService.sendSms(destination, text, 'DRIVER_NOTIFY');
-    },
-
-    /**
-     * Sends notification to the Administrator
-     */
-    sendAdminNotification: async (bookingDetails: { id?: string, tourTitle: string, date: string, price: string, customerName: string, contact: string, driverName: string }): Promise<boolean> => {
-        let adminPhone = HARDCODED_ADMIN_PHONE;
-        
-        // Try to get from DB, but fallback to hardcoded if empty
-        try {
-            const settings = await db.settings.get();
-            if (settings.adminPhoneNumber && settings.adminPhoneNumber.length > 5) {
-                adminPhone = settings.adminPhoneNumber;
-            }
-        } catch (e) {
-            console.warn('[SMS Service] Could not fetch settings, using hardcoded admin phone.');
-        }
-
-        const destination = smsService.cleanPhoneNumber(adminPhone);
-        const shortId = bookingDetails.id ? bookingDetails.id.slice(-6).toUpperCase() : 'NEW';
-        
-        const text = `[ADMIN] Javshani #${shortId}!\nKlienti: ${bookingDetails.customerName}\nTel: ${bookingDetails.contact}\nMzgoli: ${bookingDetails.driverName}\nTuri: ${bookingDetails.tourTitle.substring(0, 15)}\nFasi: ${bookingDetails.price}`;
-        
-        return smsService.sendSms(destination, text, 'ADMIN_NOTIFY');
-    },
-
-    /**
-     * Core Sender Function using smsoffice.ge API
+     * ძირითადი ფუნქცია SMS-ის გასაგზავნად
      */
     sendSms: async (destination: string, text: string, type: 'ADMIN_NOTIFY' | 'DRIVER_NOTIFY'): Promise<boolean> => {
         let apiKey = '';
+        let isEnabled = true;
+
         try {
             const settings = await db.settings.get();
-            if (settings.smsEnabled === false) {
-                console.log("[SMS Service] SMS sending is GLOBALLY DISABLED in Settings.");
-                return false;
-            }
-            if (settings.smsApiKey && settings.smsApiKey.length > 5) {
-                apiKey = settings.smsApiKey;
-            }
+            apiKey = settings.smsApiKey || '';
+            isEnabled = settings.smsEnabled !== false;
         } catch (e) {
-            console.warn('[SMS Service] DB fetch failed.');
+            console.warn('[SMS Service] Error fetching settings:', e);
+        }
+
+        if (!isEnabled) {
+            console.log("[SMS Service] SMS sending is disabled in settings.");
+            return false;
         }
 
         if (!apiKey) {
-            console.warn("[SMS Service] CRITICAL: No API Key configured in Admin Panel. Cannot send SMS.");
-            return false;
+            // თუ გასაღები ბაზაში არაა, აქ ჩაწერე შენი დეფოლტ გასაღები
+            apiKey = '34272d646d9446b2b5aa45ee83571538'; 
         }
 
-        // URL Encode the content
+        const cleanDest = smsService.cleanPhoneNumber(destination);
         const encodedContent = encodeURIComponent(text);
+        const url = `https://smsoffice.ge/api/v2/send/?key=${apiKey}&destination=${cleanDest}&sender=${SENDER_NAME}&content=${encodedContent}&urgent=true`;
         
-        // Construct URL according to documentation
-        // GET /api/v2/send/?key=...&destination=...&sender=...&content=...&urgent=true
-        const url = `https://smsoffice.ge/api/v2/send/?key=${apiKey}&destination=${destination}&sender=${SENDER_NAME}&content=${encodedContent}&urgent=true`;
-        
-        const logId = Date.now().toString() + Math.random().toString(36).substr(2, 5);
-        
-        console.log(`[SMS Service] Attempting to send to ${destination}. URL (masked): ${url.replace(apiKey, '***')}`);
+        const logId = Date.now().toString();
 
         try {
-            // Log Attempt in DB
-            await db.smsLogs.log({ id: logId, recipient: destination, content: text, status: 'TRYING', timestamp: Date.now(), type });
-            
-            // Execute Request
-            // Note: mode: 'no-cors' is used because smsoffice.ge typically does not support CORS for browser-side calls.
-            // This means we won't get a readable JSON response in the browser, but the request WILL be sent.
+            // ლოგირება ბაზაში (მცდელობა)
+            await db.smsLogs.log({ 
+                id: logId, 
+                recipient: cleanDest, 
+                content: text, 
+                status: 'TRYING', 
+                timestamp: Date.now(), 
+                type 
+            });
+
+            // გაგზავნა (no-cors აუცილებელია ბრაუზერისთვის)
             await fetch(url, { method: 'GET', mode: 'no-cors' });
             
-            // Assume success if no network error threw
-            console.log(`[SMS Service] Request sent successfully to ${destination}`);
-            await db.smsLogs.log({ id: logId, recipient: destination, content: text, status: 'SENT', timestamp: Date.now(), type });
+            await db.smsLogs.log({ 
+                id: logId, 
+                recipient: cleanDest, 
+                content: text, 
+                status: 'SENT', 
+                timestamp: Date.now(), 
+                type 
+            });
             return true;
-
         } catch (error: any) {
-            console.error('[SMS Service] FAILED to send:', error);
-            await db.smsLogs.log({ id: logId, recipient: destination, content: `Error: ${error.message}`, status: 'FAILED', timestamp: Date.now(), type });
+            console.error('[SMS Service] Fetch failed:', error);
+            await db.smsLogs.log({ 
+                id: logId, 
+                recipient: cleanDest, 
+                content: `Error: ${error.message}`, 
+                status: 'FAILED', 
+                timestamp: Date.now(), 
+                type 
+            });
             return false;
         }
+    },
+
+    /**
+     * ადმინისტრატორის შეტყობინება
+     */
+    sendAdminNotification: async (data: { 
+        id: string, 
+        tourTitle: string, 
+        date: string, 
+        price: string, 
+        customerName: string, 
+        contact: string, 
+        driverName: string 
+    }): Promise<boolean> => {
+        let adminPhone = FALLBACK_ADMIN_PHONE;
+        try {
+            const settings = await db.settings.get();
+            if (settings.adminPhoneNumber) adminPhone = settings.adminPhoneNumber;
+        } catch (e) {}
+
+        const shortId = data.id.slice(-6).toUpperCase();
+        const text = `[ADMIN] Javshani #${shortId}!\nKlienti: ${data.customerName}\nTel: ${data.contact}\nMzgoli: ${data.driverName}\nTuri: ${data.tourTitle.substring(0, 15)}\nFasi: ${data.price}`;
+        
+        return smsService.sendSms(adminPhone, text, 'ADMIN_NOTIFY');
+    },
+
+    /**
+     * მძღოლის შეტყობინება
+     */
+    sendDriverNotification: async (driverPhone: string, data: { 
+        id: string, 
+        tourTitle: string, 
+        date: string, 
+        price: string 
+    }): Promise<boolean> => {
+        const shortId = data.id.slice(-6).toUpperCase();
+        const text = `OrbiTrip: Axali Shekveta #${shortId}!\nRoute: ${data.tourTitle.substring(0, 20)}\nDate: ${data.date}\nPrice: ${data.price}`;
+        
+        return smsService.sendSms(driverPhone, text, 'DRIVER_NOTIFY');
+    },
+
+    /**
+     * გაუქმების შეტყობინება მძღოლს
+     */
+    sendDriverCancellationNotification: async (driverPhone: string, data: { id: string, date: string }): Promise<boolean> => {
+        const shortId = data.id.slice(-6).toUpperCase();
+        const text = `OrbiTrip: Javshani #${shortId} (${data.date}) gaukmeda an gadaeca sxva mzgols.`;
+        
+        return smsService.sendSms(driverPhone, text, 'DRIVER_NOTIFY');
     }
 };
