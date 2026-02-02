@@ -19,7 +19,7 @@ import { db } from './services/db';
 import { smsService } from './services/smsService';
 import { emailService } from './services/emailService';
 
-// --- LAZY LOADING FOR HEAVY & ADMIN COMPONENTS ---
+// --- LAZY LOADING COMPONENTS ---
 const AdminLogin = React.lazy(() => import('./components/AdminLogin'));
 const AdminDashboard = React.lazy(() => import('./components/AdminDashboard'));
 const DriverDashboard = React.lazy(() => import('./components/DriverDashboard'));
@@ -28,25 +28,21 @@ const LegalView = React.lazy(() => import('./components/LegalView'));
 
 const DEFAULT_STOPS = ['', ''];
 
-// --- SAFE HISTORY WRAPPERS ---
+// --- NAVIGATION HELPERS ---
 const safeHistoryPush = (state: any, title: string, url: string) => {
     try { 
-        if (typeof window !== 'undefined' && window.history && typeof window.history.pushState === 'function') {
+        if (typeof window !== 'undefined' && window.history.pushState) {
             window.history.pushState(state, title, url); 
         }
-    } catch (e) {
-        console.warn("Navigation warning: History API restricted.", e);
-    }
+    } catch (e) { console.warn("History API restricted.", e); }
 };
 
 const safeHistoryReplace = (state: any, title: string, url: string) => {
     try { 
-        if (typeof window !== 'undefined' && window.history && typeof window.history.replaceState === 'function') {
+        if (typeof window !== 'undefined' && window.history.replaceState) {
             window.history.replaceState(state, title, url); 
         }
-    } catch (e) {
-        console.warn("Navigation warning: History API restricted.", e);
-    }
+    } catch (e) { console.warn("History API restricted.", e); }
 };
 
 const PageLoader = () => (
@@ -57,11 +53,10 @@ const PageLoader = () => (
 );
 
 const App = () => {
+    // --- STATE ---
     const [language, setLanguage] = useState<Language>(() => {
         try {
-            const storage = typeof window !== 'undefined' ? window.localStorage : null; 
-            if (!storage) return Language.EN;
-            const saved = storage.getItem('orbitrip_lang');
+            const saved = localStorage.getItem('orbitrip_lang');
             return (saved as Language) || Language.EN;
         } catch (e) { return Language.EN; }
     });
@@ -80,11 +75,9 @@ const App = () => {
     const [searchGuests, setSearchGuests] = useState<number>(2); 
     const [selectedTour, setSelectedTour] = useState<Tour | null>(null);
     const [isTourDetailOpen, setIsTourDetailOpen] = useState(false);
-    
     const [isSearching, setIsSearching] = useState(false);
     
     const [selectedDriverProfile, setSelectedDriverProfile] = useState<{driver: Driver, price: number} | null>(null);
-
     const [bookingNumericPrice, setBookingNumericPrice] = useState<number>(0);
     const [bookingFinalDate, setBookingFinalDate] = useState<string>(''); 
     const [selectedDriverForBooking, setSelectedDriverForBooking] = useState<Driver | null>(null);
@@ -93,26 +86,32 @@ const App = () => {
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
     
     const resultsRef = useRef<HTMLDivElement>(null);
-    const [manualSearchTimestamp, setManualSearchTimestamp] = useState(0);
     
     const [loggedInDriverId, setLoggedInDriverId] = useState<string | null>(() => {
-        try { return typeof window !== 'undefined' ? window.localStorage.getItem('orbitrip_driver_session') : null; }
-        catch (e) { return null; }
+        try { return localStorage.getItem('orbitrip_driver_session'); } catch (e) { return null; }
     });
 
+    // --- INITIALIZATION ---
     useEffect(() => {
         const initData = async () => {
             try {
-                const settings = await db.settings.get();
+                const [settings, allTours, allDrivers, allBookings] = await Promise.all([
+                    db.settings.get(),
+                    db.tours.getAll(),
+                    db.drivers.getAll(),
+                    db.bookings.getAll()
+                ]);
+                
                 setSystemSettings(settings);
+                setTours(allTours);
+                setDrivers([...allDrivers]);
+                setBookings(allBookings);
+
                 if (settings.backgroundImageUrl) {
                     const bgElement = document.getElementById('global-bg-image');
                     if (bgElement) bgElement.style.backgroundImage = `url('${settings.backgroundImageUrl}')`;
                 }
-                setTours(await db.tours.getAll());
-                setDrivers([...await db.drivers.getAll()]);
-                setBookings(await db.bookings.getAll());
-            } catch (err) { console.error(err); }
+            } catch (err) { console.error("Data load error:", err); }
             finally { setIsDataLoaded(true); }
         };
         initData();
@@ -120,32 +119,20 @@ const App = () => {
         return () => window.removeEventListener('orbitrip-db-change', initData);
     }, []);
 
-    useEffect(() => {
-        const handlePopState = (event: PopStateEvent) => {
-            if (event.state && event.state.view) {
-                setCurrentView(event.state.view);
-            } else {
-                if (currentView === 'BOOKING_PAGE') {
-                    setCurrentView(searchParams ? 'SEARCH_RESULTS' : 'HOME');
-                } else if (currentView === 'DRIVER_PROFILE') {
-                    setCurrentView('SEARCH_RESULTS');
-                } else if (currentView === 'SEARCH_RESULTS') {
-                    setCurrentView('HOME');
-                    setSearchParams(null);
-                } else if (currentView.startsWith('LEGAL')) {
-                    setCurrentView('HOME');
-                }
-            }
-        };
-
-        window.addEventListener('popstate', handlePopState);
-        return () => window.removeEventListener('popstate', handlePopState);
-    }, [currentView, searchParams]);
-
+    // --- NAVIGATION ---
     const navigateTo = (view: string, path: string) => {
         setCurrentView(view);
         safeHistoryPush({ view }, '', path);
         window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleReset = () => {
+        setSearchParams(null);
+        setSelectedTour(null);
+        setIsSuccessModalOpen(false);
+        setBookingFinalDate('');
+        setSearchBoxKey(k => k + 1);
+        navigateTo('HOME', '/');
     };
 
     const handleSearch = useCallback(async (params: TripSearch, isAuto: boolean = false, guests: number = 2, tourOverride?: Tour) => {
@@ -154,14 +141,13 @@ const App = () => {
         
         if (isAuto) {
             setIsSearching(true);
-            await new Promise(resolve => setTimeout(resolve, 600)); 
-            setSearchParams(prev => ({ ...params })); 
+            await new Promise(r => setTimeout(r, 600));
+            setSearchParams({ ...params }); 
             setIsSearching(false);
         } else {
             setSearchParams(params);
             setCurrentView('SEARCH_RESULTS');
             safeHistoryPush({ view: 'SEARCH_RESULTS' }, '', '?step=results');
-            setManualSearchTimestamp(Date.now());
         }
     }, []);
 
@@ -169,12 +155,10 @@ const App = () => {
         setSelectedDriverForBooking(driver);
         setBookingNumericPrice(price);
         setBookingFinalDate(date);
-        
-        setCurrentView('BOOKING_PAGE');
-        safeHistoryPush({ view: 'BOOKING_PAGE' }, '', '/booking');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        navigateTo('BOOKING_PAGE', '/booking');
     };
 
+    // --- BOOKING LOGIC (With SMS) ---
     const handleBookingSubmit = async (bookingData: any) => {
         try {
             const newBooking: Booking = {
@@ -184,13 +168,12 @@ const App = () => {
                 createdAt: Date.now()
             };
             
-            // ბაზაში შენახვა
             await db.bookings.create(newBooking);
             setBookings(prev => [newBooking, ...prev]);
             setLastBooking(newBooking);
             setIsSuccessModalOpen(true);
             
-            // SMS ადმინისტრატორს
+            // 1. SMS ადმინისტრატორს
             smsService.sendAdminNotification({
                 id: newBooking.id,
                 tourTitle: newBooking.tourTitle || 'Transfer',
@@ -199,57 +182,24 @@ const App = () => {
                 customerName: newBooking.customerName,
                 contact: newBooking.contactInfo,
                 driverName: newBooking.driverName || 'Any'
-            }).catch(err => console.warn("Admin SMS failed", err));
+            }).catch(e => console.warn("Admin SMS failed", e));
 
-            // SMS მძღოლს (თუ მძღოლი არჩეულია)
-            if (selectedDriverForBooking && selectedDriverForBooking.phone_number) {
+            // 2. SMS მძღოლს
+            if (selectedDriverForBooking?.phone_number) {
                 smsService.sendDriverNotification(selectedDriverForBooking.phone_number, {
                     id: newBooking.id,
                     tourTitle: newBooking.tourTitle || 'Transfer',
                     date: newBooking.date,
                     price: `${newBooking.totalPrice} GEL`
-                }).catch(err => console.warn("Driver SMS failed", err));
+                }).catch(e => console.warn("Driver SMS failed", e));
             }
 
-            // იმეილის გაგზავნა
+            // 3. Email
             emailService.sendBookingConfirmation(newBooking, selectedTour, language).catch(() => {});
             
         } catch (error) {
-            alert(language === Language.EN ? "Network Error. Please try again." : "Ошибка сети. Пожалуйста, попробуйте снова.");
+            alert(language === Language.EN ? "Booking Error. Try again." : "Ошибка бронирования. Попробуйте снова.");
         }
-    };
-
-    const handleReset = () => {
-        setSearchParams(null);
-        setSelectedTour(null);
-        setIsSuccessModalOpen(false);
-        setBookingFinalDate('');
-        setSearchBoxKey(k => k + 1);
-        
-        setCurrentView('HOME');
-        safeHistoryPush({ view: 'HOME' }, '', '/');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    const handleBackFromBooking = () => {
-        if (selectedDriverProfile) {
-            setCurrentView('DRIVER_PROFILE');
-            safeHistoryReplace({ view: 'DRIVER_PROFILE' }, '', `?driver=${selectedDriverProfile.driver.id}`);
-        } else {
-            setCurrentView('SEARCH_RESULTS');
-            safeHistoryReplace({ view: 'SEARCH_RESULTS' }, '', '?step=results');
-        }
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    const handleBackToResults = () => {
-        setCurrentView('SEARCH_RESULTS');
-        safeHistoryReplace({ view: 'SEARCH_RESULTS' }, '', '?step=results');
-        setTimeout(() => {
-            if (resultsRef.current) {
-                resultsRef.current.scrollIntoView({ behavior: 'auto' });
-            }
-        }, 50);
     };
 
     const handleLogin = (role: 'ADMIN' | 'DRIVER', driverId?: string) => {
@@ -265,32 +215,23 @@ const App = () => {
     const handleLogout = () => {
         setLoggedInDriverId(null);
         localStorage.removeItem('orbitrip_driver_session');
-        navigateTo('HOME', '/');
+        handleReset();
     };
 
     const isEn = language === Language.EN;
 
+    // --- SEO ---
     const baseSeoTitle = useMemo(() => {
         if (systemSettings?.siteTitle) return systemSettings.siteTitle;
-        switch(currentView) {
-            case 'TOURS': return isEn ? "OrbiTrip - Tours" : "OrbiTrip - Туры";
-            case 'BLOG': return isEn ? "Travel Blog" : "Блог о путешествиях";
-            case 'ADMIN_LOGIN': return "Partner Login";
-            case 'BOOKING_PAGE': return isEn ? "Complete Booking" : "Завершение бронирования";
-            default: return isEn ? "OrbiTrip - Transfers" : "OrbiTrip - Трансферы";
-        }
+        if (currentView === 'TOURS') return isEn ? "Tours in Georgia" : "Туры по Грузии";
+        return isEn ? "OrbiTrip - Georgia Transfers" : "OrbiTrip - Трансферы по Грузии";
     }, [currentView, isEn, systemSettings]);
-
-    const baseSeoDesc = useMemo(() => {
-        if (systemSettings?.siteDescription) return systemSettings.siteDescription;
-        return isEn ? "Book reliable private drivers in Georgia." : "Закажите надежных частных водителей в Грузии.";
-    }, [isEn, systemSettings]);
 
     if (!isDataLoaded) return <PageLoader />;
 
     return (
         <ErrorBoundary language={language}>
-            <SEO title={baseSeoTitle} description={baseSeoDesc} />
+            <SEO title={baseSeoTitle} description={systemSettings?.siteDescription || "Private drivers in Georgia"} />
             
             <Header 
                 language={language} 
@@ -301,7 +242,7 @@ const App = () => {
                     else if (tool === 'BLOG') navigateTo('BLOG', '/blog');
                     else if (tool === 'ADMIN_LOGIN') navigateTo('ADMIN_LOGIN', '/admin');
                     else if (tool === 'DRIVER_REGISTRATION') navigateTo('DRIVER_REGISTRATION', '/drive-with-us');
-                    else if (tool === 'DRIVER_DASHBOARD') navigateTo('DRIVER_DASHBOARD', '/admin');
+                    else if (tool === 'DRIVER_DASHBOARD') navigateTo('DRIVER_DASHBOARD', '/driver/dashboard');
                 }} 
                 currentLocation={userLocation}
                 onLocationChange={setUserLocation}
@@ -316,72 +257,30 @@ const App = () => {
                         
                         case 'ADMIN_DASHBOARD':
                             return <AdminDashboard 
-                                bookings={bookings} 
-                                tours={tours} 
-                                drivers={drivers} 
-                                onAddTour={t => db.tours.create(t)} 
-                                onUpdateTour={t => db.tours.update(t)} 
-                                onDeleteTour={id => db.tours.delete(id)} 
-                                onUpdateBookingStatus={(id, status) => db.bookings.updateStatus(id, status)} 
-                                onUpdateBooking={b => db.bookings.update(b)}
-                                onAddDriver={d => db.drivers.create(d)} 
-                                onUpdateDriver={d => db.drivers.update(d)} 
-                                onDeleteDriver={id => db.drivers.delete(id)}
+                                bookings={bookings} tours={tours} drivers={drivers}
+                                onAddTour={db.tours.create} onUpdateTour={db.tours.update} onDeleteTour={db.tours.delete}
+                                onUpdateBookingStatus={db.bookings.updateStatus} onUpdateBooking={db.bookings.update}
+                                onAddDriver={db.drivers.create} onUpdateDriver={db.drivers.update} onDeleteDriver={db.drivers.delete}
                                 onLogout={handleLogout}
                             />;
 
                         case 'DRIVER_DASHBOARD':
                             return <DriverDashboard 
-                                bookings={bookings} 
-                                tours={tours} 
-                                drivers={drivers} 
-                                driverId={loggedInDriverId || ''} 
-                                onAddTour={t => db.tours.create(t)} 
-                                onUpdateTour={t => db.tours.update(t)} 
-                                onDeleteTour={id => db.tours.delete(id)} 
-                                onUpdateBookingStatus={(id, status) => db.bookings.updateStatus(id, status)}
-                                onAddDriver={d => db.drivers.create(d)} 
-                                onUpdateDriver={d => db.drivers.update(d)} 
-                                onDeleteDriver={id => db.drivers.delete(id)}
+                                bookings={bookings} tours={tours} drivers={drivers}
+                                driverId={loggedInDriverId || ''}
+                                onUpdateBookingStatus={db.bookings.updateStatus}
                                 onLogout={handleLogout}
                             />;
 
                         case 'DRIVER_REGISTRATION':
-                            return <DriverRegistration language={language} onRegister={d => { db.drivers.create(d); navigateTo('HOME', '/'); alert(isEn ? 'Application Sent!' : 'Заявка отправлена!'); }} onBack={() => navigateTo('HOME', '/')} />;
+                            return <DriverRegistration language={language} onRegister={d => { db.drivers.create(d); handleReset(); }} onBack={handleReset} />;
 
                         case 'BLOG':
-                            return (
-                                <div className="pt-24 bg-white">
-                                    <BlogList language={language} onBookRoute={(f, t) => handleSearch({ stops: [f, t], date: '', totalDistance: 0 }, false)} />
-                                </div>
-                            );
-                        
-                        case 'LEGAL_TERMS':
-                            return (
-                                <div className="pt-24 bg-white">
-                                    <LegalView type="TERMS" language={language} onBack={handleReset} />
-                                </div>
-                            );
-
-                        case 'LEGAL_PRIVACY':
-                            return (
-                                <div className="pt-24 bg-white">
-                                    <LegalView type="PRIVACY" language={language} onBack={handleReset} />
-                                </div>
-                            );
+                            return <div className="pt-24 bg-white"><BlogList language={language} onBookRoute={(f, t) => handleSearch({ stops: [f, t], date: '', totalDistance: 0 }, false)} /></div>;
 
                         case 'SEARCH_RESULTS':
                             return (
-                                <div className="pt-0 pb-0">
-                                    <div className="max-w-4xl mx-auto px-4 mb-12 text-center text-white pt-32">
-                                        <h1 className="text-4xl md:text-6xl font-black mb-4 drop-shadow-lg">
-                                            {isEn ? 'Georgia Private Transfers' : 'Трансферы по Грузии'}
-                                        </h1>
-                                        <p className="text-lg opacity-90 drop-shadow-md">
-                                            {isEn ? 'Direct deal with local experts' : 'Заказ напрямую у местных водителей'}
-                                        </p>
-                                    </div>
-
+                                <div className="pt-32 pb-20">
                                     <TripSearchBox 
                                         key={searchBoxKey} 
                                         language={language} 
@@ -390,103 +289,51 @@ const App = () => {
                                         initialDate={searchParams?.date}
                                         maintenanceMode={systemSettings?.maintenanceMode} 
                                     />
-                                    
-                                    {searchParams ? (
-                                        <div 
-                                            ref={resultsRef} 
-                                            className="animate-fadeIn min-h-screen mt-8"
-                                        >
+                                    {searchParams && (
+                                        <div ref={resultsRef} className="animate-fadeIn mt-8">
                                             <VehicleResults 
-                                                search={searchParams} 
-                                                language={language} 
-                                                onBook={(driver, price, guests, date) => {
-                                                    handleInitiateBooking(driver, parseFloat(price), date);
-                                                }} 
-                                                onProfileOpen={(driver, price) => {
-                                                    setSelectedDriverProfile({ driver, price });
-                                                    setCurrentView('DRIVER_PROFILE');
-                                                    safeHistoryPush({ view: 'DRIVER_PROFILE' }, '', `?driver=${driver.id}`);
-                                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                                }}
-                                                onDirectBooking={handleBookingSubmit}
+                                                search={searchParams} language={language} drivers={drivers}
+                                                onBook={(d, p, g, dt) => handleInitiateBooking(d, parseFloat(p), dt)}
+                                                onProfileOpen={(d, p) => { setSelectedDriverProfile({ driver: d, price: p }); navigateTo('DRIVER_PROFILE', `?driver=${d.id}`); }}
                                                 onSearchUpdate={handleSearch}
-                                                isLoading={isSearching} 
-                                                drivers={drivers} 
-                                                tour={selectedTour} 
-                                                onBack={handleReset} 
-                                                initialGuests={searchGuests} 
-                                                bookings={bookings}
-                                                minPrice={systemSettings?.minTripPrice}
-                                                hideSearchHeader={true} 
+                                                isLoading={isSearching} tour={selectedTour} minPrice={systemSettings?.minTripPrice}
                                             />
-                                        </div>
-                                    ) : (
-                                        <div className="mt-12 text-center pb-32 animate-fadeIn">
-                                            <div className="bg-white/10 backdrop-blur-md p-8 rounded-2xl inline-block">
-                                                <p className="text-white font-bold text-lg mb-4">
-                                                    {isEn ? "Session expired. Please search again." : "Сессия истекла. Пожалуйста, выполните поиск заново."}
-                                                </p>
-                                                <button 
-                                                    onClick={handleReset}
-                                                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-xl font-bold transition"
-                                                >
-                                                    {isEn ? "New Search" : "Новый поиск"}
-                                                </button>
-                                            </div>
                                         </div>
                                     )}
                                 </div>
                             );
 
                         case 'DRIVER_PROFILE':
-                            if (!selectedDriverProfile) {
-                                setCurrentView('HOME');
-                                return null;
-                            }
-                            return <DriverProfile 
-                                        driver={selectedDriverProfile.driver} 
-                                        price={selectedDriverProfile.price.toString()}
-                                        language={language}
-                                        onBack={handleBackToResults}
-                                        date={searchParams?.date}
-                                        onBook={(finalDate) => {
-                                            handleInitiateBooking(selectedDriverProfile.driver, selectedDriverProfile.price, finalDate);
-                                        }}
-                                    />;
-                        
+                            return selectedDriverProfile ? (
+                                <DriverProfile 
+                                    driver={selectedDriverProfile.driver} price={selectedDriverProfile.price.toString()} 
+                                    language={language} date={searchParams?.date} onBack={() => setCurrentView('SEARCH_RESULTS')}
+                                    onBook={(dt) => handleInitiateBooking(selectedDriverProfile.driver, selectedDriverProfile.price, dt)}
+                                />
+                            ) : null;
+
                         case 'BOOKING_PAGE':
                             return <BookingModal 
-                                    onBack={handleBackFromBooking} 
-                                    tour={selectedTour} 
-                                    search={searchParams} 
-                                    language={language} 
-                                    onSubmit={handleBookingSubmit} 
-                                    initialGuests={searchGuests} 
-                                    numericPrice={bookingNumericPrice} 
-                                    selectedDriver={selectedDriverForBooking}
-                                    initialDate={bookingFinalDate} 
-                                />;
+                                onBack={() => setCurrentView('SEARCH_RESULTS')} tour={selectedTour} search={searchParams} 
+                                language={language} onSubmit={handleBookingSubmit} initialGuests={searchGuests} 
+                                numericPrice={bookingNumericPrice} selectedDriver={selectedDriverForBooking} initialDate={bookingFinalDate} 
+                            />;
 
                         case 'TOURS':
                             return (
-                                <div className="pt-24 bg-white/80">
-                                    <AiPlanner 
-                                        language={language} 
-                                        userLocation={userLocation} 
-                                        drivers={drivers} 
-                                        tours={tours} 
-                                        onPlanToBook={(search, guests, driver, tour) => handleSearch(search, false, guests, tour)} 
-                                    />
+                                <div className="pt-24">
+                                    <AiPlanner language={language} userLocation={userLocation} drivers={drivers} tours={tours} onPlanToBook={handleSearch} />
                                     <TourList tours={tours} language={language} onViewDetails={(t) => { setSelectedTour(t); setIsTourDetailOpen(true); }} />
                                 </div>
                             );
+
                         case 'HOME':
                         default:
                             return (
                                 <div className="pt-32 pb-0">
                                     <div className="max-w-4xl mx-auto px-4 mb-12 text-center text-white">
                                         <h1 className="text-4xl md:text-6xl font-black mb-4 drop-shadow-lg">
-                                            {isEn ? 'Georgia Private Transfers' : 'Транსферы по Грузии'}
+                                            {isEn ? 'Georgia Private Transfers' : 'Трансферы по Грузии'}
                                         </h1>
                                         <p className="text-lg opacity-90 drop-shadow-md">
                                             {isEn ? 'Direct deal with local experts' : 'Заказ напрямую у местных водителей'}
@@ -500,16 +347,12 @@ const App = () => {
                 })()}
             </Suspense>
 
-            {['HOME', 'TOURS', 'BLOG', 'SEARCH_RESULTS', 'DRIVER_PROFILE', 'LEGAL_TERMS', 'LEGAL_PRIVACY', 'DRIVER_REGISTRATION'].includes(currentView) && (
-                <Footer language={language} settings={systemSettings} onNavigate={navigateTo} />
-            )}
-
+            <Footer language={language} settings={systemSettings} onNavigate={navigateTo} />
+            
             {isTourDetailOpen && selectedTour && (
                 <TourDetailModal 
-                    isOpen={isTourDetailOpen} 
-                    onClose={() => setIsTourDetailOpen(false)} 
-                    tour={selectedTour} 
-                    language={language} 
+                    isOpen={isTourDetailOpen} onClose={() => setIsTourDetailOpen(false)} 
+                    tour={selectedTour} language={language} 
                     onBook={(t) => handleSearch({ stops: t.routeStops || [], date: '', totalDistance: 200 }, false, 2, t)} 
                 />
             )}
