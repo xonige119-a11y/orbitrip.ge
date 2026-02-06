@@ -1,0 +1,9 @@
+{
+  "name": "Copy of user orbitrip2",
+  "description": "",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
